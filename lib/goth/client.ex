@@ -3,16 +3,31 @@ defmodule Goth.Client do
   alias Goth.Token
 
   def get_access_token(scope) do
-    endpoint = Application.get_env(:goth, :endpoint, "https://www.googleapis.com")
+    case Config.get(:env_name) do
+      {:ok, :gce_production} -> gce_get_access_token(scope)
+      {:ok, _} -> common_get_access_token(scope)
+    end
+  end
 
-    {:ok, response} = HTTPoison.post( Path.join([endpoint, "/oauth2/v4/token"]),
-                                      {:form, [grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                                               assertion:  jwt(scope)]
-                                      },
-                                      [ {"Content-Type", "application/x-www-form-urlencoded"} ]
-                                    )
+  def common_get_access_token(scope) do
+      endpoint = Application.get_env(:goth, :endpoint, "https://www.googleapis.com")
 
-    {:ok, Token.from_response_json(scope, response.body)}
+      {:ok, response} = HTTPoison.post( Path.join([endpoint, "/oauth2/v4/token"]),
+                                        {:form, [grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                                                 assertion:  jwt(scope)]
+                                        },
+                                        [ {"Content-Type", "application/x-www-form-urlencoded"} ]
+                                      )
+      {:ok, Token.from_response_json(scope, response.body)}
+
+  end
+
+  @gce_metadata_endpoint "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+
+  def gce_get_access_token(scope) do
+      headers = [{"Metadata-Flavor", "Google"}]
+      {:ok, response} = HTTPoison.get(@gce_metadata_endpoint, headers)
+      {:ok, Token.from_response_json(scope, response.body)}
   end
 
   def claims(scope), do: claims(scope, :os.system_time(:seconds))

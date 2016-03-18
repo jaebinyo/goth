@@ -7,9 +7,23 @@ defmodule Goth.Config do
 
   def init(:ok) do
     case Application.get_env(:goth, :json) do
-      nil  -> {:ok, Application.get_env(:goth, :config, %{})}
-      json -> {:ok, Poison.decode!(json)}
+      nil  -> {:ok, Application.get_env(:goth, :config, %{"env_name" => get_env_name })}
+      json -> {:ok, Poison.decode!(json) |> Map.put("env_name", get_env_name)}
     end
+  end
+
+  def get_env_name do
+    case HTTPoison.get("http://metadata.google.internal") do
+      {:ok, response} -> if get_header(response.headers, "Metadata-Flavor") == "Google" do :gce_production else :unknown end
+      {:error, _} -> :unknown
+    end
+  end
+
+  defp get_header(headers, key) do
+    headers
+      |> Enum.filter(fn({k, _}) -> k == key end)
+      |> hd
+      |> elem(1)
   end
 
   def set(key, value) when is_atom(key), do: key |> to_string |> set(value)
@@ -30,3 +44,4 @@ defmodule Goth.Config do
     {:reply, Map.fetch(keys, key), keys}
   end
 end
+
